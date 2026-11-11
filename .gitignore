@@ -1,0 +1,11 @@
+node_modules/
+.env
+.env.*
+!.env.example
+*.log
+tmp/
+admin-response.json
+verified-created-records.json
+verified-spend-rows.json
+api.json
+report.csv

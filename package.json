@@ -1,0 +1,1 @@
+{"name":"kaz-spend-toolbox","version":"0.1.0","private":true,"type":"module","engines":{"node":">=18"},"bin":{"spend-toolbox":"./src/cli.js"},"scripts":{"test":"node --test"}}
