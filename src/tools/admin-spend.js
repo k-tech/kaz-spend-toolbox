@@ -4,21 +4,26 @@ import {nextDate} from './bidease-country.js';
 const host = 'https://admin.feedmob.com';
 const b64 = value => Buffer.from(value).toString('base64url');
 
+export function adminHeaders(key, secret, now = new Date()) {
+  if (!key || !secret) throw new Error('缺少 FEEDMOB_KEY 或 FEEDMOB_SECRET。');
+  const expires = new Date(now); expires.setUTCDate(expires.getUTCDate() + 7);
+  const unsigned = `${b64(JSON.stringify({alg:'HS256',typ:'JWT'}))}.${b64(JSON.stringify({key,expired_at:expires.toISOString().slice(0,10),iat:Math.floor(now.getTime()/1000)}))}`;
+  const token = `${unsigned}.${createHmac('sha256', secret).update(unsigned).digest('base64url')}`;
+  return {'Accept':'application/json','FEEDMOB-KEY':key,'FEEDMOB-TOKEN':token};
+}
+
 export async function fetchAdminSpends({startDate, endDate, clickUrlIds = [], clientId, key = process.env.FEEDMOB_KEY, secret = process.env.FEEDMOB_SECRET, fetchImpl = fetch, now = new Date()}) {
   nextDate(startDate); nextDate(endDate);
   if (startDate > endDate) throw new Error('开始日期不能晚于结束日期。');
   if (!Array.isArray(clickUrlIds) || clickUrlIds.some(id => typeof id !== 'string' || !/^[1-9]\d*$/.test(id)) || (clientId !== undefined && (!Number.isSafeInteger(clientId) || clientId <= 0))) throw new Error('Click URL 或 Client ID 无效。');
   if (!clickUrlIds.length && clientId === undefined) throw new Error('必须提供至少一个 Click URL 或 Client ID。');
-  if (!key || !secret) throw new Error('缺少 FEEDMOB_KEY 或 FEEDMOB_SECRET。');
-  const expires = new Date(now); expires.setUTCDate(expires.getUTCDate() + 7);
-  const unsigned = `${b64(JSON.stringify({alg:'HS256',typ:'JWT'}))}.${b64(JSON.stringify({key,expired_at:expires.toISOString().slice(0,10),iat:Math.floor(now.getTime()/1000)}))}`;
-  const token = `${unsigned}.${createHmac('sha256', secret).update(unsigned).digest('base64url')}`;
+  const headers = adminHeaders(key, secret, now);
   const url = new URL('/ai/api/direct_spends', host);
   url.searchParams.set('start_date', startDate); url.searchParams.set('end_date', endDate);
   for (const id of clickUrlIds) url.searchParams.append('click_url_ids[]', id);
   if (clientId !== undefined) url.searchParams.set('client_id', String(clientId));
   let response, body;
-  try { response = await fetchImpl(url, {headers:{'Accept':'application/json','FEEDMOB-KEY':key,'FEEDMOB-TOKEN':token}, signal:AbortSignal.timeout(30000), redirect:'error'}); }
+  try { response = await fetchImpl(url, {headers, signal:AbortSignal.timeout(30000), redirect:'error'}); }
   catch { throw new Error('Admin 查询连接失败或超时。'); }
   if (!response.ok) throw new Error(`Admin 查询返回 HTTP ${response.status}。`);
   try { body = await response.text(); } catch { throw new Error('无法读取 Admin 响应。'); }
@@ -124,7 +129,8 @@ export function summarizeSpendTrends({records,startDate,endDate,currency,statusA
 }
 
 // The API exposes spend-date records only; unknown metadata remains unknown.
-export function analyzeAdminResponse({response,startDate,endDate,currency,scope}) {
+export function analyzeAdminResponse({response,startDate,endDate,currency,scope,evidence}) {
+  if (evidence !== undefined) throw new Error('不支持使用外部证据补充查询结果。');
   const data = Array.isArray(response) ? response : response?.data;
   if (!Array.isArray(data) || (!Array.isArray(response) && response.status !== undefined && response.status !== 200)) throw new Error('Admin 返回数据格式或状态无效。');
   const ids = scope?.clickUrlIds ?? [];
@@ -146,5 +152,18 @@ export function analyzeAdminResponse({response,startDate,endDate,currency,scope}
     return {id:String(r.id),click_url_id:String(r.click_url_id),spend_date:r.date,net_spend:amount(r.feedmob_net_spend),gross_spend:amount(r.feedmob_gross_spend),category:'unknown',status:'unknown',is_test:null};
   });
   const result = summarizeSpendTrends({records,startDate,endDate,currency,statusAsOf:null});
-  return {...result,source:'FeedMob Admin Direct Spend',scope:{click_url_ids:ids,client_id:scope.clientId ?? null},coverage:'仅为所选过滤条件内返回的记录，测试标记未知且未排除；响应完整性和币种需核实。',limitations:'Admin 不返回创建人、录入类别、测试标记和状态；全部保留未知，不能解读为生产数据或人工/自动/AI 占比。服务端已将金额转为浮点。'};
+  const urls = new Map(), days = new Set();
+  for (const row of records) {
+    const group = urls.get(row.click_url_id) ?? {count:0,net:{coefficient:0n,scale:0},gross:{coefficient:0n,scale:0},dates:new Map()};
+    group.count++; group.net = add(group.net,amountParts(row.net_spend)); group.gross = add(group.gross,amountParts(row.gross_spend));
+    group.dates.set(row.spend_date,(group.dates.get(row.spend_date) ?? 0)+1); days.add(row.spend_date);
+    urls.set(row.click_url_id,group);
+  }
+  const calendarDays = (Date.parse(`${endDate}T00:00:00Z`) - Date.parse(`${startDate}T00:00:00Z`)) / 86400000 + 1;
+  const byClickUrl = [...urls].sort(([a],[b])=>BigInt(a)<BigInt(b)?-1:BigInt(a)>BigInt(b)?1:0).map(([click_url_id,g])=>({
+    click_url_id,count:g.count,net_spend:format(g.net),gross_spend:format(g.gross),
+    dates_with_records:g.dates.size,dates_without_returned_records:calendarDays-g.dates.size,
+    multiple_record_dates:[...g.dates].filter(([,count])=>count>1).sort(([a],[b])=>a.localeCompare(b)).map(([date,count])=>({date,count}))
+  }));
+  return {...result,source:'FeedMob Admin Direct Spend',scope:{click_url_ids:ids,client_id:scope.clientId ?? null},returned_record_coverage:{calendar_days:calendarDays,dates_with_records:days.size,dates_without_returned_records:calendarDays-days.size},by_click_url:byClickUrl,coverage:'仅为所选过滤条件内返回的记录；无返回记录不等于零消耗或漏录，同日多条也不一定重复。测试标记未知且未排除；响应完整性和币种需核实。',limitations:'Admin 不返回创建人、录入类别、测试标记和状态；全部保留未知，不能解读为生产数据或人工/自动/AI 占比。服务端已将金额转为浮点。'};
 }

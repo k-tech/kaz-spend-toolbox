@@ -78,3 +78,26 @@ test('一次查询与统计衔接，日期和 URL 超出范围时拒绝', async 
   assert.equal(analyzeAdminResponse(input).total[0].net_spend,'1.5');
   assert.throws(()=>analyzeAdminResponse({...input,endDate:'2026-10-30'}));
 });
+
+test('拒绝使用外部证据修改 Admin 查询统计', async () => {
+  const {analyzeAdminResponse} = await import('../src/tools/admin-spend.js');
+  const response = {status:200,data:[{id:1,click_url_id:123,date:'2026-11-01',feedmob_net_spend:10,feedmob_gross_spend:20}]};
+  const input = {...opts,response,scope:{clickUrlIds:['123']}};
+  assert.throws(() => analyzeAdminResponse({...input,evidence:{records:[{id:'1',category:'automatic'}],click_urls:[]}}), /不支持/);
+  const result = analyzeAdminResponse(input);
+  assert.equal(result.total[0].key,'unknown');
+  assert.equal(result.test_status_unknown_rows,1);
+});
+
+test('按 URL 汇总金额并报告有记录日期及同日多条；空查询不推断零消耗', async () => {
+  const {analyzeAdminResponse} = await import('../src/tools/admin-spend.js');
+  const row = {id:1,click_url_id:12,date:'2026-11-01',feedmob_net_spend:1.1,feedmob_gross_spend:2};
+  const input = {startDate:'2026-11-01',endDate:'2026-11-03',currency:'USD',scope:{clickUrlIds:['12','13']},response:{status:200,data:[row,{...row,id:2,feedmob_net_spend:0.2},{...row,id:3,click_url_id:13,date:'2026-11-03'}]}};
+  const r = analyzeAdminResponse(input);
+  assert.deepEqual(r.returned_record_coverage,{calendar_days:3,dates_with_records:2,dates_without_returned_records:1});
+  assert.deepEqual(r.by_click_url[0],{click_url_id:'12',count:2,net_spend:'1.3',gross_spend:'4',dates_with_records:1,dates_without_returned_records:2,multiple_record_dates:[{date:'2026-11-01',count:2}]});
+  assert.equal(r.by_click_url[1].click_url_id,'13');
+  const empty = analyzeAdminResponse({...input,response:{status:200,data:[]}});
+  assert.equal(empty.returned_record_coverage.dates_without_returned_records,3);
+  assert.deepEqual(empty.by_click_url,[]);
+});

@@ -1,6 +1,6 @@
 # Kaz Spend Toolbox
 
-AI-2895 第一阶段：可扩展的只读取数工具箱。业务取数逻辑与命令行入口分离，后续可增加其他工具，也可在实际需要时由 MCP/API 调用同一逻辑。
+AI-2895：可扩展的 Spend 工具箱，包含只读查询、统计及单条录入。业务逻辑与命令行入口分离，后续可由 MCP/API 调用同一逻辑。
 
 ## 当前工具：Bidease 国家维度取数
 
@@ -89,6 +89,29 @@ node src/cli.js admin-analyze --start 2026-11-03 --end 2026-11-03 --click-url 23
 
 示例使用的币种须按实际业务核实；日期是 Spend Date（两端包含），不代表创建时间或 UTC 时间戳。也可用 `--client ID`，或重复 `--click-url ID`；过滤条件取交集。输出所选范围的 Net/Gross、记录数、日/周/月统计和占比。接口没有分类、状态与测试标记，故分别为 `unknown`、`unknown`、未知：未知测试记录**包含在总数中且单独计数**，不能称为已剔测试的生产统计，也不能解读为人工或自动占比。响应金额由服务端先转浮点，分析只能对接收后的数字累加，不能恢复服务端转换损失；币种和返回完整性仍需人工核实。无需修改或提交真实 Spend。
 
+`by_click_url` 汇总每个返回过记录的 URL 的条数、Net/Gross、出现记录的天数、未返回记录的天数及同日多条记录的日期；`returned_record_coverage` 是整个查询范围的日期计数。未返回记录不等于零消耗或漏录，同日多条也不一定是重复录入。没有返回记录的 URL 不会出现在 `by_click_url`；以上统计不能证明 API 返回完整。
+
 2026-11-11 真实只读验证：对 URL 23567、2026-11-03，`admin-query` 和 `admin-analyze` 均为一条，分析的 Net/Gross 与查询响应一致，测试标记和类别为未知；未与 Admin 页面金额逐字段核对。
 
 报告生成侧：经检查，现有 [Client Report Spends](https://github.com/feed-mob/feedmob_admin/blob/master/app/controllers/api/v1/client_report_spends_controller.rb) 是报告消费数据行；[Vendor Reports](https://github.com/feed-mob/feedmob_admin/blob/master/app/views/vendor_reports/_vendor_report.html.erb) 显示 campaign、展示、消费等记录。两者行数不能证明生成或到达的报告/邮件数；当前未找到可确认完整报告生成事件的只读接口，故不输出该统计。需要能区分事件类型、唯一 ID、发生时间、报表及完整性范围的可靠事件来源后才能实现。
+
+`admin-analyze` 只使用 Admin 查询响应，不接受人工历史证据补充分类、创建人、测试标记或状态。接口未返回的字段保持未知；历史 Spend Date 是查询条件，不代表利用历史证据推断结论。`admin-stats` 和 `spend-trends` 使用本地提供的记录，不会自动从 Admin API 获取，不能视为 Admin API 的实时结果。
+
+## Admin 单条 Spend 录入
+
+`admin-create` 参考 [FeedMob 的 create_direct_spend](https://github.com/feed-mob/fm-mcp-servers/blob/f24adfd0be6dbb94ee80b812c6573a1d84c52953/src/feedmob-reporting/src/index.ts) 新增一条记录。默认只预览，显式传 `--submit` 才会写入。仅用于新增；目标 Click URL 和 Spend Date 已有记录时停止，不覆盖。每次只处理一条。
+
+在受保护环境配置 `FEEDMOB_KEY` 与 `FEEDMOB_SECRET`。准备本地 JSON 文件（示例均为虚构值；勿提交业务数据或凭据）：
+
+```json
+{"click_url_id":12345,"spend_date":"2026-11-08","net_spend":"10.00","gross_spend":"12.50","billing_type":"CPM","impression":1000}
+```
+
+```bash
+node src/cli.js admin-create --input spend-entry.json
+node src/cli.js admin-create --input spend-entry.json --submit
+```
+
+`billing_type` 须明确填写 `CPM`、`CPA` 或 `OTHER`，仅用于本地检查，不发送给 API；CPM 必须提供展示数 `impression`。金额要求非负十进制字符串。可按业务需要提供 `clicks_count`、`installs_count`、`client_paid_action_count`、`partner_paid_action_count`、`creative`、`audit_comment`；计数为非负整数。必须由操作者核实目标 URL、日期、计价方式、当日生效 Margin、金额及必需的计费指标；程序不会从账户汇总推导客户金额，也不会自行计算 Gross。
+
+提交前以相同 URL 和日期查询已有记录；提交后回读并比较 ID、金额和提供的计数/creative。返回 `created_verified` 表示这些字段回读一致；`existing` 为已有记录未提交；`rejected` 为接口明确拒绝；`unverified` 为提交或回读结果尚不明确，先核查后处理，不能盲目重试。`audit_comment` 无法从当前查询接口回读，提供时结果保留 `unverified`。当前只通过模拟接口验证，生产写入权限及生产提交尚未验证。

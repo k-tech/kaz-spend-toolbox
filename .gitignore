@@ -9,3 +9,5 @@ verified-created-records.json
 verified-spend-rows.json
 api.json
 report.csv
+evidence.json
+spend-entry.json
