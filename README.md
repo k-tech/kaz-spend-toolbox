@@ -46,7 +46,9 @@ node src/cli.js bidease-reconcile --date 2026-11-08 --api api.json --report repo
 
 ## Admin Direct Spend 查询与创建记录统计
 
-`admin-query` 依据 [FeedMob MCP 实现](https://github.com/feed-mob/fm-mcp-servers/blob/f24adfd0be6dbb94ee80b812c6573a1d84c52953/src/feedmob-reporting/src/api.ts) 和 [Admin 查询实现](https://github.com/feed-mob/feedmob_admin/blob/e48d42432cccc956a406d86ed2fc0d539b191f66/app/commands/ai_direct_spend_index_command.rb) 只读 GET 查询，至少指定一个 Client 或 Click URL；多个过滤条件取交集。日期是 **Spend Date**，两端包含，不是 Created At。输出原始 JSON，金额在服务端已转浮点；不得假定等同数据库的原始精度。返回空数组仅表示该筛选条件下没有匹配，不代表没有其他范围数据。接口不提供创建时间、创建人或来源，因此不能用它计算录入人、系统/AI/人工占比，也不能用 Spend Date 范围推断创建期间的完整记录。
+`admin-query` 依据 [FeedMob MCP 实现](https://github.com/feed-mob/fm-mcp-servers/blob/f24adfd0be6dbb94ee80b812c6573a1d84c52953/src/feedmob-reporting/src/api.ts) 和 [Admin 查询实现](https://github.com/feed-mob/feedmob_admin/blob/391c32d639066d208abcea39baa10081ee9635e4/app/commands/ai_direct_spend_index_command.rb) 只读 GET 查询，至少指定一个 Client 或 Click URL；多个过滤条件取交集。日期是 **Spend Date**，两端包含，不是 Created At。输出原始 JSON，金额在服务端已转浮点；不得假定等同数据库的原始精度。返回空数组仅表示该筛选条件下没有匹配，不代表没有其他范围数据。接口不提供创建时间、创建人或来源，因此不能用它计算录入人、系统/AI/人工占比，也不能用 Spend Date 范围推断创建期间的完整记录。
+
+上述固定版本的后端直接返回匹配记录数组，没有分页参数或分页元数据；这不能证明运行中的服务或其他接口没有截断。HTTP 错误、非成功业务状态、非空业务错误或意外出现的分页元数据会使查询和分析失败，需核实上游契约，不能当成完整结果。该后端还支持 Campaign/Vendor ID 筛选，当前 Toolbox 未暴露这两项。
 
 在受保护的环境提供 `FEEDMOB_KEY` 和 `FEEDMOB_SECRET`，不要放入命令、代码或日志。目标固定为 `https://admin.feedmob.com`，不跟随重定向。响应可能包含敏感业务数据，请限制文件权限；示例中的 ID 与日期仅为格式演示：
 

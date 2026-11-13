@@ -4,6 +4,18 @@ import {nextDate} from './bidease-country.js';
 const host = 'https://admin.feedmob.com';
 const b64 = value => Buffer.from(value).toString('base64url');
 
+function validateAdminResponse(response) {
+  if (Array.isArray(response)) return;
+  if (!response || typeof response !== 'object' || !Array.isArray(response.data)) throw new Error('Admin 响应缺少记录数组；无法确认查询结果。');
+  if (response.status !== undefined && response.status !== 200) throw new Error('Admin 响应业务状态非成功；无法确认查询结果。');
+  const errors = response.errors;
+  if (errors != null && (Array.isArray(errors) ? errors.length > 0 : typeof errors === 'object' ? Object.keys(errors).length > 0 : Boolean(errors))) throw new Error('Admin 响应包含业务错误；无法确认查询结果。');
+  if (response.error) throw new Error('Admin 响应包含业务错误；无法确认查询结果。');
+  // The inspected Direct Spend endpoint returns an unpaginated array. Do not
+  // silently accept a changed/partial pagination contract as a complete result.
+  if (['pagination','meta','next_page','next_cursor','has_more','total_pages','current_page'].some(k => Object.hasOwn(response,k))) throw new Error('Admin 响应包含分页信息；完整性尚未确认。');
+}
+
 export function adminHeaders(key, secret, now = new Date()) {
   if (!key || !secret) throw new Error('缺少 FEEDMOB_KEY 或 FEEDMOB_SECRET。');
   const expires = new Date(now); expires.setUTCDate(expires.getUTCDate() + 7);
@@ -29,7 +41,7 @@ export async function fetchAdminSpends({startDate, endDate, clickUrlIds = [], cl
   try { body = await response.text(); } catch { throw new Error('无法读取 Admin 响应。'); }
   let parsed;
   try { parsed = JSON.parse(body); } catch { throw new Error('Admin 响应不是有效 JSON。'); }
-  if (!Array.isArray(parsed) && !(parsed && typeof parsed === 'object' && Array.isArray(parsed.data))) throw new Error('Admin 响应缺少记录数组；无法确认查询结果。');
+  validateAdminResponse(parsed);
   // Preserve the original bytes: JSON numeric amounts may otherwise lose precision.
   return body;
 }
@@ -132,7 +144,7 @@ export function summarizeSpendTrends({records,startDate,endDate,currency,statusA
 export function analyzeAdminResponse({response,startDate,endDate,currency,scope,evidence}) {
   if (evidence !== undefined) throw new Error('不支持使用外部证据补充查询结果。');
   const data = Array.isArray(response) ? response : response?.data;
-  if (!Array.isArray(data) || (!Array.isArray(response) && response.status !== undefined && response.status !== 200)) throw new Error('Admin 返回数据格式或状态无效。');
+  validateAdminResponse(response);
   const ids = scope?.clickUrlIds ?? [];
   if (!Array.isArray(ids) || (!ids.length && scope?.clientId === undefined)) throw new Error('须提供查询范围。');
   const amount = value => {

@@ -37,6 +37,18 @@ test('查询错误不会暴露认证信息，拒绝非记录响应', async () =>
   await assert.rejects(fetchAdminSpends({...base,fetchImpl:async()=>({ok:false,status:401})}),/HTTP 401/);
 });
 
+test('HTTP 200 中的业务错误和分页信号不能被当作完整查询结果', async () => {
+  const base={startDate:opts.startDate,endDate:opts.endDate,clientId:5,key:'fake-key',secret:'fake-secret'};
+  const fetchBody = body => fetchAdminSpends({...base,fetchImpl:async()=>({ok:true,text:async()=>JSON.stringify(body)})});
+  for (const body of [{status:403,data:[]},{status:200,data:[],errors:['denied']},{status:200,data:[],error:'denied'},{status:200,data:[],pagination:{next_page:2}}]) {
+    await assert.rejects(fetchBody(body));
+    const {analyzeAdminResponse} = await import('../src/tools/admin-spend.js');
+    assert.throws(()=>analyzeAdminResponse({...opts,response:body,scope:{clientId:5}}));
+  }
+  assert.equal(await fetchBody({status:200,data:[],errors:[]}),'{"status":200,"data":[],"errors":[]}');
+  await assert.rejects(fetchAdminSpends({...base,fetchImpl:async()=>({ok:false,status:403})}),/HTTP 403/);
+});
+
 test('空记录返回零计数且不伪造人员比例', () => {
   const r = summarizeCreatedSpends({...opts,records:[]});
   assert.equal(r.count,0); assert.equal(r.net_spend,'0'); assert.deepEqual(r.by_creator,[]);
