@@ -1,1 +1,1 @@
-{"name":"kaz-spend-toolbox","version":"0.1.0","private":true,"type":"module","engines":{"node":">=18"},"bin":{"spend-toolbox":"./src/cli.js"},"scripts":{"test":"node --test"}}
+{"name":"kaz-spend-toolbox","version":"0.1.0","private":true,"type":"module","engines":{"node":">=18"},"bin":{"spend-toolbox":"./src/cli.js"},"scripts":{"test":"node --test"},"dependencies":{"@modelcontextprotocol/sdk":"1.32.2","zod":"4.6.7"}}

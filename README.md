@@ -1,48 +1,34 @@
 # Kaz Spend Toolbox
 
-AI-2895：可扩展的 Spend 工具箱，包含只读查询、统计及单条录入。业务逻辑与命令行入口分离，后续可由 MCP/API 调用同一逻辑。
+AI-2895：Spend 工具箱提供 Admin 只读查询、统计和单条录入预览，并通过 CLI 与 MCP 暴露现有工具。实际提交单条录入须明确授权。
 
-## 当前工具：Bidease 国家维度取数
+## Agent 任务入口
 
-查询 Bidease Reporting API 指定 UTC 日的 VN/VNM、TR/TUR 报表，展示 Spend、Impressions、查询日期、数据范围及获取时间。没有返回行显示“无返回行”，不按 0 处理。Spend 以 API 原始小数字符串保留，不擅自四舍五入。缺字段、重复国家行或格式不可靠时会报错，避免输出误导性结果。
-
-**范围：**请求为 `group=Country`，未按 campaign、app 或 Click URL 筛选，账户范围由 token 决定；币种也未独立确认。因此结果是账户内国家维度汇总，不能直接当作 Binance 或某个 Click URL 的金额用于录入。需要后续核实账户范围及可用的 campaign 级过滤/维度，并与源报表核对。本工具不计算 Gross、不查询 Admin、不写入数据。
+按业务任务选择 [Spend Lens 与 Femini 操作指南和案例](agent-tools/README.md)：检查已录入 Spend 和根因使用 Spend Lens；查数、多源快照与计费试算使用 Femini。两者独立运行，首期仅查询、诊断和无写入试算；Femini 需要操作者本人完成原生接入，当前本机 Codex 的持久认证仍未完成。
 
 ## 使用
 
-需要 Node.js 18+ 和已有 Bidease API token。按你使用的凭据管理方式在当前 shell 提供 `BIDEASE_API_TOKEN`，不要把 token 写入仓库、命令参数或共享日志。工具不会在输出中包含 token。
+需要 Node.js 18+。安装依赖后，可查看工具列表并运行测试：
 
 ```bash
+npm ci
 node src/cli.js list
-node src/cli.js bidease-country --date 2026-11-08
-node src/cli.js bidease-country --date 2026-11-08 --json
 npm test
 ```
 
-日期明确指定为 UTC 日；API 请求范围为该日到次日。需要自行确认报表完成时间及数据时区。网络、认证和接口错误以非零退出码报告。无返回行不代表零消耗。
+## 工具一览
+
+| CLI | 用途 |
+|---|---|
+| `admin-query` | 只读查询 Admin Direct Spend |
+| `admin-analyze` | 查询并分析返回的 Spend 数据 |
+| `admin-stats` | 按创建时间和创建人汇总已整理的记录 |
+| `spend-trends` | 按 Spend Date 汇总分类和状态 |
+| `admin-create` | 预览或新增单条 Spend；默认只预览 |
 
 ## 添加工具
 
 在 `src/tools/` 添加独立模块，接受明确输入、返回含来源和范围的结构化结果；在 `src/cli.js` 的工具列表注册；补充使用说明与能验证数据处理的测试。CLI 是薄入口，模块可单独被其他程序导入。避免将凭据或用户数据放进代码、测试和日志。
-
-## 当前验证情况
-
-自动测试使用虚构数据及模拟接口，不代表生产 API、账号范围或当前报表已验证。日常使用前需在有权限的环境运行只读查询，并与 Bidease 原始报表同日同范围对照。
-
-## 同范围报表对账（只读）
-
-下一步先核对 API 对账户国家汇总的读取是否与 Bidease 源报表一致；这不证明该账户属于 Binance，也不建立 campaign 或 Click URL 映射。先人工核实源报表与 API 的账户、UTC 日期、币种、国家维度及汇总范围完全一致，并确认源报表已完整生成。工具无法独立验证这些事实。
-
-将同日 `bidease-country --json` 输出保存为本地 API JSON，将 Bidease 同范围导出转换为 UTF-8 CSV，表头须含 `country,spend,impressions`；国家以 VN/VNM 和 TR/TUR 表示，每个国家最多一行。CSV 的日期和范围由操作者确认，工具不能从 CSV 验证。不要把报表或凭据提交到共享位置。
-
-```bash
-node src/cli.js bidease-country --date 2026-11-08 --json > api.json
-node src/cli.js bidease-reconcile --date 2026-11-08 --api api.json --report report.csv --confirm-same-scope
-```
-
-输出 JSON，金额用十进制字符串精确比较（忽略尾随零），展示数按整数比较；任一侧无行时该国为 `inconclusive`，不视为零或一致。总体有差异为 `mismatch`，否则有无行则为 `inconclusive`，两国均匹配才为 `match`。退出码 0 表示两国均匹配，2 表示差异或无法判定，1 表示输入/执行错误。匹配仅说明输入数值一致，人工范围确认和源报表真实性仍需另行核实。本工具不请求额外接口、不写入 Spend、不计算客户金额。
-
-目前仍需在有权限环境对真实 API 和源报表进行对账，确认账户及币种，并核实 Bidease 实际支持的 campaign 维度/过滤方式与 Click URL 映射；在此之前不能将账户金额用于特定客户。
 
 ## Admin Direct Spend 查询与创建记录统计
 
@@ -117,3 +103,18 @@ node src/cli.js admin-create --input spend-entry.json --submit
 `billing_type` 须明确填写 `CPM`、`CPA` 或 `OTHER`，仅用于本地检查，不发送给 API；CPM 必须提供展示数 `impression`。金额要求非负十进制字符串。可按业务需要提供 `clicks_count`、`installs_count`、`client_paid_action_count`、`partner_paid_action_count`、`creative`、`audit_comment`；计数为非负整数。必须由操作者核实目标 URL、日期、计价方式、当日生效 Margin、金额及必需的计费指标；程序不会从账户汇总推导客户金额，也不会自行计算 Gross。
 
 提交前以相同 URL 和日期查询已有记录；提交后回读并比较 ID、金额和提供的计数/creative。返回 `created_verified` 表示这些字段回读一致；`existing` 为已有记录未提交；`rejected` 为接口明确拒绝；`unverified` 为提交或回读结果尚不明确，先核查后处理，不能盲目重试。`audit_comment` 无法从当前查询接口回读，提供时结果保留 `unverified`。当前只通过模拟接口验证，生产写入权限及生产提交尚未验证。
+
+## Codex 的 MCP 接入
+
+项目通过标准 stdio MCP 暴露 `admin_query`、`admin_analyze`、`admin_stats`、`spend_trends`、`admin_create`，分别对应同名 CLI 的连字符版本。`npm ci` 安装锁定依赖；使用 Node.js 18+。本机注册示例（根据实际安装位置调整绝对路径）：
+
+```sh
+codex mcp add kaz-spend-toolbox -- /absolute/path/to/node /absolute/path/to/kaz-spend-toolbox/src/mcp.js
+codex mcp get kaz-spend-toolbox
+```
+
+按 [Codex 官方文档](https://learn.chatgpt.com/docs/extend/mcp?surface=cli)，可为该服务在 Codex 配置的 `env_vars` 中列出 `FEEDMOB_KEY`、`FEEDMOB_SECRET`，使其继承启动 Codex 时已有的环境变量。配置中只列名称，不要保存凭据值；缺少凭据时离线工具和预览仍可用，在线工具会报错。环境变量需由使用者通过自己的安全方式提供；注册本身不会自动获取业务凭据。新开 Codex 会话后验证工具发现，已运行会话不保证热加载。
+
+MCP 离线分析直接接收 JSON 数组，不接受文件路径。日期与币种说明、来源限制及未知字段与上面的 CLI 一致。`admin_create` 是有副作用的工具，**默认只预览**；`submit: true` 会尝试真实生产写入，必须事先取得用户对该笔具体录入的明确授权并核实业务数据。现有查重、回读、不确定结果不重试的限制不变。安装或预览不构成提交授权。
+
+macOS 可使用 `src/mcp-keychain-launcher.js` 启动 MCP：优先使用启动环境中已有的 FeedMob 变量；缺少时使用 `src/mcp-keychain-read.py` 的 Security.framework 非交互模式，只查询登录钥匙串中 service `kaz-spend-toolbox.feedmob`、account 分别为 `FEEDMOB_KEY` 和 `FEEDMOB_SECRET` 的 Generic Password 项。日常启动不允许弹出钥匙串授权提示；钥匙串项目不存在、访问被拒或不可用时，在线工具返回不含密钥的结构化状态，离线工具仍可用。启动器不保存或创建凭据；请通过获授权的安全方式配置项目。
