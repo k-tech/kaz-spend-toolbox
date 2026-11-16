@@ -1,10 +1,17 @@
 # Kaz Spend Toolbox
 
-AI-2895：Spend 工具箱提供 Admin 只读查询、统计和单条录入预览，并通过 CLI 与 MCP 暴露现有工具。实际提交单条录入须明确授权。
+让没有 Spend 背景的 Agent 根据业务问题完成有证据的只读检查，或明确说明还缺什么。先读 [新人任务手册](agent-tools/README.md)：它包含基础口径、任务分流、可复制的启动请求和验收清单。
 
-## Agent 任务入口
+- 先了解 [系统地图](agent-tools/spend-system-map.md)，再按任务使用 [缺失与异常排查](agent-tools/workflows/missing-and-anomaly-triage.md)、[Admin 记录与审计](agent-tools/admin-workspace/README.md) 或 [Client Report 对账](agent-tools/feedmob-reporting/README.md)。
+- 已录入 Spend 的异常或差异：也可从 [Spend Lens 检查流程](agent-tools/spend-lens/README.md)开始。
+- 指定对象的日度数据或多源快照：从 [Femini 快照流程](agent-tools/femini/README.md)开始。
+- 计费试算需要先核实合同规则和原生工具；当前尚未验收。数据补录或修改不在本期范围。
 
-按业务任务选择 [Spend Lens 与 Femini 操作指南和案例](agent-tools/README.md)：检查已录入 Spend 和根因使用 Spend Lens；查数、多源快照与计费试算使用 Femini。两者独立运行，首期仅查询、诊断和无写入试算；Femini 需要操作者本人完成原生接入，当前本机 Codex 的持久认证仍未完成。
+新增指南仅经静态源码/文档核对，尚未实测。各流程按需使用；仅用操作者本人已有权限，不复制凭据。网页可见不等于原生工具已接入；外部数据不可验证时不能宣称对账完成。以下 CLI/MCP 内容是已有实现参考，并非新人必须安装或调用的入口。
+
+## 已有 CLI / MCP 实现参考
+
+AI-2895 的现有实现提供 Admin 查询、统计及单条录入预览；实际提交单条录入须明确授权，本手册的只读任务不执行提交。
 
 ## 使用
 
@@ -65,21 +72,21 @@ node src/cli.js spend-trends --start 2026-09-01 --end 2026-11-04 --currency USD 
 
 ### 真实只读验证记录
 
-2026-11-11 使用获授权账号查询 Spend Date 2026-11-03、Click URL 23567，返回 1 行，日期和 URL 与请求一致；返回的 Net/Gross 为 JSON 数值，且响应没有 Created At、Created By、录入类别或状态字段。另一条 URL 23886 同日返回空数组。此检查不证明金额与 Admin 页面逐字段一致，也不证明其他日期、权限范围或完整导出可用。
+2026-11-11 使用获授权账号查询指定消费日和对象，返回 1 行，日期和 URL 与请求一致；返回的 Net/Gross 为 JSON 数值，且响应没有 Created At、Created By、录入类别或状态字段。另一授权对象同日返回空数组。此检查不证明金额与 Admin 页面逐字段一致，也不证明其他日期、权限范围或完整导出可用。
 
 ### 直接查询并统计
 
 `admin-analyze` 将真实 Admin 查询响应接入趋势分析，无需先改造 JSON：
 
 ```bash
-node src/cli.js admin-analyze --start 2026-11-03 --end 2026-11-03 --click-url 23567 --currency USD
+node src/cli.js admin-analyze --start 2026-11-03 --end 2026-11-03 --click-url 12345 --currency USD
 ```
 
 示例使用的币种须按实际业务核实；日期是 Spend Date（两端包含），不代表创建时间或 UTC 时间戳。也可用 `--client ID`，或重复 `--click-url ID`；过滤条件取交集。输出所选范围的 Net/Gross、记录数、日/周/月统计和占比。接口没有分类、状态与测试标记，故分别为 `unknown`、`unknown`、未知：未知测试记录**包含在总数中且单独计数**，不能称为已剔测试的生产统计，也不能解读为人工或自动占比。响应金额由服务端先转浮点，分析只能对接收后的数字累加，不能恢复服务端转换损失；币种和返回完整性仍需人工核实。无需修改或提交真实 Spend。
 
 `by_click_url` 汇总每个返回过记录的 URL 的条数、Net/Gross、出现记录的天数、未返回记录的天数及同日多条记录的日期；`returned_record_coverage` 是整个查询范围的日期计数。未返回记录不等于零消耗或漏录，同日多条也不一定是重复录入。没有返回记录的 URL 不会出现在 `by_click_url`；以上统计不能证明 API 返回完整。
 
-2026-11-11 真实只读验证：对 URL 23567、2026-11-03，`admin-query` 和 `admin-analyze` 均为一条，分析的 Net/Gross 与查询响应一致，测试标记和类别为未知；未与 Admin 页面金额逐字段核对。
+2026-11-11 真实只读验证：对获授权的一个对象及指定日期，`admin-query` 和 `admin-analyze` 均为一条，分析的 Net/Gross 与查询响应一致，测试标记和类别为未知；未与 Admin 页面金额逐字段核对。
 
 报告生成侧：经检查，现有 [Client Report Spends](https://github.com/feed-mob/feedmob_admin/blob/master/app/controllers/api/v1/client_report_spends_controller.rb) 是报告消费数据行；[Vendor Reports](https://github.com/feed-mob/feedmob_admin/blob/master/app/views/vendor_reports/_vendor_report.html.erb) 显示 campaign、展示、消费等记录。两者行数不能证明生成或到达的报告/邮件数；当前未找到可确认完整报告生成事件的只读接口，故不输出该统计。需要能区分事件类型、唯一 ID、发生时间、报表及完整性范围的可靠事件来源后才能实现。
 
