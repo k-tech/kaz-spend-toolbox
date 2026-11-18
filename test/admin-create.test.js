@@ -63,3 +63,13 @@ test('命令行默认只预览输入并列出录入工具', async () => {
     assert.match(execFileSync(process.execPath,['src/cli.js','list'],{encoding:'utf8'}),/admin-create/);
   } finally { rmSync(dir,{recursive:true,force:true}); }
 });
+
+test('事件费率计费要求客户付费事件数，点击和安装可省略', async () => {
+  const event = {click_url_id:123,spend_date:'2026-11-08',net_spend:'8.00',gross_spend:'20.00',billing_type:'EVENT_RATE',client_paid_action_count:4};
+  const result = await createAdminSpend({input:event});
+  assert.equal(result.status,'preview');
+  assert.equal(result.record.gross_spend,'20.00');
+  assert.equal(result.record.client_paid_action_count,4);
+  assert.equal(result.record.clicks_count,undefined);
+  await assert.rejects(createAdminSpend({input:{...event,client_paid_action_count:undefined,partner_paid_action_count:4}}),/client_paid_action_count/);
+});
