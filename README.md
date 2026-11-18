@@ -1,11 +1,11 @@
 # Kaz Spend Toolbox
 
-让没有 Spend 背景的 Agent 根据业务问题完成有证据的只读检查，或明确说明还缺什么。先读 [新人任务手册](agent-tools/README.md)：它包含基础口径、任务分流、可复制的启动请求和验收清单。
+让没有 Spend 背景的 Agent 根据业务问题完成有证据的检查，或按明确授权准备和录入 Spend。先读 [新人任务手册](agent-tools/README.md)：它包含基础口径、任务分流、可复制的启动请求和验收清单。
 
 - 先了解 [系统地图](agent-tools/spend-system-map.md)，再按任务使用 [缺失与异常排查](agent-tools/workflows/missing-and-anomaly-triage.md)、[Admin 记录与审计](agent-tools/admin-workspace/README.md) 或 [Client Report 对账](agent-tools/feedmob-reporting/README.md)。
 - 已录入 Spend 的异常或差异：也可从 [Spend Lens 检查流程](agent-tools/spend-lens/README.md)开始。
 - 指定对象的日度数据或多源快照：从 [Femini 快照流程](agent-tools/femini/README.md)开始。
-- 计费试算需要先核实合同规则和原生工具；当前尚未验收。数据补录或修改不在本期范围。
+- 新增、补录或纠错：从 [Spend 录入技能](agent-tools/feedmob-spend-entry/SKILL.md) 开始；实际写入须有明确授权，能力及线上行为需核实。计费试算仍须先核实合同规则。
 
 新增指南仅经静态源码/文档核对，尚未实测。各流程按需使用；仅用操作者本人已有权限，不复制凭据。网页可见不等于原生工具已接入；外部数据不可验证时不能宣称对账完成。以下 CLI/MCP 内容是已有实现参考，并非新人必须安装或调用的入口。
 
@@ -107,7 +107,7 @@ node src/cli.js admin-create --input spend-entry.json
 node src/cli.js admin-create --input spend-entry.json --submit
 ```
 
-`billing_type` 须明确填写 `CPM`、`CPA` 或 `OTHER`，仅用于本地检查，不发送给 API；CPM 必须提供展示数 `impression`。金额要求非负十进制字符串。可按业务需要提供 `clicks_count`、`installs_count`、`client_paid_action_count`、`partner_paid_action_count`、`creative`、`audit_comment`；计数为非负整数。必须由操作者核实目标 URL、日期、计价方式、当日生效 Margin、金额及必需的计费指标；程序不会从账户汇总推导客户金额，也不会自行计算 Gross。
+`billing_type` 须明确填写 `CPM`、`CPA`、`EVENT_RATE` 或 `OTHER`，仅用于本地检查，不发送给 API；CPM 必须提供展示数 `impression`；events × 费率计费须选 `EVENT_RATE` 并提供 `client_paid_action_count`。金额要求非负十进制字符串。可按业务需要提供 `clicks_count`、`installs_count`、`client_paid_action_count`、`partner_paid_action_count`、`creative`、`audit_comment`；计数为非负整数。必须由操作者核实目标 URL、日期、计价方式、适用日的计费规则、金额及必需的计费指标（事件计费按确认费率而非固定 margin）；程序不会从账户汇总推导客户金额，也不会自行计算 Gross。
 
 提交前以相同 URL 和日期查询已有记录；提交后回读并比较 ID、金额和提供的计数/creative。返回 `created_verified` 表示这些字段回读一致；`existing` 为已有记录未提交；`rejected` 为接口明确拒绝；`unverified` 为提交或回读结果尚不明确，先核查后处理，不能盲目重试。`audit_comment` 无法从当前查询接口回读，提供时结果保留 `unverified`。当前只通过模拟接口验证，生产写入权限及生产提交尚未验证。
 

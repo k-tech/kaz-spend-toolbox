@@ -9,9 +9,10 @@ export function validateCreate(input) {
   if (!Number.isSafeInteger(input.click_url_id) || input.click_url_id <= 0) throw new Error('click_url_id 必须是正整数。');
   nextDate(input.spend_date);
   for (const name of ['net_spend','gross_spend']) if (typeof input[name] !== 'string' || !/^\d+(?:\.\d+)?$/.test(input[name]) || !Number.isFinite(Number(input[name]))) throw new Error(`${name} 必须是非负十进制字符串。`);
-  if (!['CPM','CPA','OTHER'].includes(input.billing_type)) throw new Error('请指定 billing_type 为 CPM、CPA 或 OTHER。');
+  if (!['CPM','CPA','EVENT_RATE','OTHER'].includes(input.billing_type)) throw new Error('请指定 billing_type 为 CPM、CPA、EVENT_RATE 或 OTHER。');
   for (const name of countFields) if (input[name] !== undefined && (!Number.isSafeInteger(input[name]) || input[name] < 0)) throw new Error(`${name} 必须是非负安全整数。`);
   if (input.billing_type === 'CPM' && input.impression === undefined) throw new Error('CPM 录入必须提供 impression。');
+  if (input.billing_type === 'EVENT_RATE' && input.client_paid_action_count === undefined) throw new Error('EVENT_RATE 录入必须提供 client_paid_action_count。');
   for (const name of ['creative','audit_comment']) if (input[name] !== undefined && (typeof input[name] !== 'string' || !input[name].trim())) throw new Error(`${name} 必须是非空字符串。`);
   const {billing_type, ...body} = input;
   return {billing_type,body};
